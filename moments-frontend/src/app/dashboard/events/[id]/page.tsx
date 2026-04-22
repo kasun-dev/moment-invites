@@ -9,6 +9,9 @@ import {
   Loader2, Copy, MessageSquare, Send, X, CheckCheck 
 } from 'lucide-react';
 
+// Import the new component
+import BulkImport from '@/components/BulkImport';
+
 export default function EventDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -20,20 +23,16 @@ export default function EventDetailsPage() {
   const [fetchingGuests, setFetchingGuests] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
-  // Selection & Bulk State
   const [selectedGuestIds, setSelectedGuestIds] = useState<string[]>([]);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [bulkIndex, setBulkIndex] = useState(0);
 
-  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
 
-  // UI View Toggle
   const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
 
-  // Form States
   const [activeGuestId, setActiveGuestId] = useState<string | null>(null);
   const [subGuestName, setSubGuestName] = useState('');
   const [newGuestName, setNewGuestName] = useState('');
@@ -71,7 +70,6 @@ export default function EventDetailsPage() {
     setFetchingGuests(false);
   };
 
-  // --- LOGIC HELPERS ---
   const formatPhone = (phone: string) => {
     let cleaned = phone.replace(/\D/g, ''); 
     if (cleaned.startsWith('0')) cleaned = '94' + cleaned.substring(1); 
@@ -110,7 +108,6 @@ export default function EventDetailsPage() {
     setSelectedGuestIds(selectedGuestIds.length === guests.length ? [] : guests.map(g => g.id));
   };
 
-  // --- DB ACTIONS ---
   const handleAddPrimaryGuest = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddingGuest(true);
@@ -147,7 +144,6 @@ export default function EventDetailsPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-300 p-8 font-sans">
       
-      {/* BULK MESSENGER MODAL */}
       {isBulkModalOpen && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-md w-full p-10 shadow-2xl relative">
@@ -192,7 +188,6 @@ export default function EventDetailsPage() {
           </div>
         </header>
 
-        {/* QUICK ADD FORM */}
         <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl mb-12 shadow-2xl">
           <h2 className="text-xs font-black uppercase tracking-widest text-zinc-500 mb-6 flex items-center gap-2"><UserPlus className="w-4 h-4"/> Register New Guest</h2>
           <form onSubmit={handleAddPrimaryGuest} className="flex flex-col md:flex-row gap-6 items-end">
@@ -208,11 +203,14 @@ export default function EventDetailsPage() {
           </form>
         </div>
 
-        {/* CONTROLS BAR */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-6">
           <div className="flex items-center gap-6">
             <h2 className="text-2xl font-black italic tracking-tighter">Guest List</h2>
             <div className="h-6 w-px bg-zinc-800" />
+            
+            {/* INTEGRATED BULK IMPORT COMPONENT */}
+            <BulkImport eventId={eventId} onSuccess={fetchPaginatedGuests} />
+
             <span className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">Records: {totalCount}</span>
             {selectedGuestIds.length > 0 && (
               <button onClick={() => { setBulkIndex(0); setIsBulkModalOpen(true); }} className="bg-green-600 text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-2 hover:bg-green-500 shadow-xl shadow-green-950/40 transition-all">
@@ -235,7 +233,6 @@ export default function EventDetailsPage() {
           </div>
         </div>
 
-        {/* DATA RENDERING */}
         {viewMode === 'table' ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
             <table className="w-full text-left text-sm whitespace-nowrap">
@@ -347,7 +344,6 @@ export default function EventDetailsPage() {
           </div>
         )}
 
-        {/* PAGINATION NAVIGATION */}
         <div className="mt-12 flex justify-between items-center border-t border-zinc-900 pt-8 shadow-2xl">
           <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.3em]">Page {currentPage} / {totalPages || 1}</p>
           <div className="flex items-center gap-3">
