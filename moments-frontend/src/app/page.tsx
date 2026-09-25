@@ -26,7 +26,6 @@ function CustomDatePicker({ value, onChange }: { value: string; onChange: (val: 
 
   const handleSelectDate = (day: number) => {
     const selected = new Date(year, month, day);
-    // Format to YYYY-MM-DD for standard form handling
     const y = selected.getFullYear();
     const m = String(selected.getMonth() + 1).padStart(2, '0');
     const d = String(selected.getDate()).padStart(2, '0');
@@ -40,7 +39,6 @@ function CustomDatePicker({ value, onChange }: { value: string; onChange: (val: 
 
   return (
     <div className="relative w-full">
-      {/* Hidden input to maintain native HTML5 form 'required' validation */}
       <input type="text" required value={value} readOnly className="sr-only" />
       
       <div 
@@ -56,7 +54,6 @@ function CustomDatePicker({ value, onChange }: { value: string; onChange: (val: 
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute top-[100%] left-0 z-50 bg-white border border-black/5 p-5 shadow-2xl mt-3 w-full max-w-[320px] rounded-xl animate-fade-up">
             
-            {/* Calendar Header */}
             <div className="flex justify-between items-center mb-6">
               <button type="button" onClick={() => changeMonth(-1)} className="p-2 hover:bg-black/5 rounded-full transition-colors text-[#121110]/60 hover:text-gold">
                 <ChevronLeft className="w-4 h-4" />
@@ -69,7 +66,6 @@ function CustomDatePicker({ value, onChange }: { value: string; onChange: (val: 
               </button>
             </div>
 
-            {/* Calendar Grid */}
             <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center mb-2">
               {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
                 <div key={day} className="text-[9px] uppercase tracking-widest text-[#121110]/40 font-medium pb-2">
@@ -151,13 +147,20 @@ export default function StorefrontPage() {
   const router = useRouter();
   
   const [guestCount, setGuestCount] = useState<number>(150);
-  const estimatedPrice = new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR', maximumFractionDigits: 0 }).format(guestCount * 225);
+  
+  // SL Pricing Formula: Base 9,999 for first 50 guests + LKR 50 per extra guest.
+  const calculatePrice = (count: number) => {
+    const basePrice = 9999;
+    if (count <= 50) return basePrice;
+    return basePrice + ((count - 50) * 50);
+  };
+  
+  const estimatedPrice = new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR', maximumFractionDigits: 0 }).format(calculatePrice(guestCount));
 
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', date: '', guests: 150 });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  // Syncs the slider and the contact form guest count automatically
   const handleGuestChange = (value: number) => {
     setGuestCount(value);
     setFormData(prev => ({ ...prev, guests: value }));
@@ -167,7 +170,6 @@ export default function StorefrontPage() {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Save to the new 'inquiries' table
     const { error } = await supabase.from('inquiries').insert([{
       couple_name: formData.name,
       email: formData.email,
@@ -206,7 +208,6 @@ export default function StorefrontPage() {
         .border-gold { border-color: #B8905B; }
         .bg-gold { background-color: #B8905B; }
 
-        /* Custom Slider Knob */
         .slider-custom::-webkit-slider-thumb {
           appearance: none;
           width: 20px;
@@ -235,7 +236,6 @@ export default function StorefrontPage() {
           transform: scale(1.15);
         }
 
-        /* Animation Keyframes */
         .animate-fade-up {
           opacity: 0;
           transform: translateY(30px);
