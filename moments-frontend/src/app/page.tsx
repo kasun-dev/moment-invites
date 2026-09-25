@@ -55,6 +55,12 @@ export default function StorefrontPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
+  // Syncs the slider and the contact form guest count automatically
+  const handleGuestChange = (value: number) => {
+    setGuestCount(value);
+    setFormData(prev => ({ ...prev, guests: value }));
+  };
+
   const handleLeadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -91,6 +97,35 @@ export default function StorefrontPage() {
         .border-gold { border-color: #B8905B; }
         .bg-gold { background-color: #B8905B; }
 
+        /* Custom Slider Knob */
+        .slider-custom::-webkit-slider-thumb {
+          appearance: none;
+          width: 20px;
+          height: 20px;
+          background-color: #B8905B;
+          border-radius: 50%;
+          border: 3px solid #1A1918;
+          box-shadow: 0 0 10px rgba(0,0,0,0.5);
+          cursor: pointer;
+          transition: transform 0.1s ease;
+        }
+        .slider-custom::-webkit-slider-thumb:hover {
+          transform: scale(1.15);
+        }
+        .slider-custom::-moz-range-thumb {
+          width: 20px;
+          height: 20px;
+          background-color: #B8905B;
+          border-radius: 50%;
+          border: 3px solid #1A1918;
+          box-shadow: 0 0 10px rgba(0,0,0,0.5);
+          cursor: pointer;
+          transition: transform 0.1s ease;
+        }
+        .slider-custom::-moz-range-thumb:hover {
+          transform: scale(1.15);
+        }
+
         /* Animation Keyframes */
         .animate-fade-up {
           opacity: 0;
@@ -121,7 +156,7 @@ export default function StorefrontPage() {
       <div className="font-sans-jost w-full max-w-[100vw] overflow-hidden bg-dark">
         
         {/* ── NAVIGATION ── */}
-        <nav className="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-6 md:px-12 lg:px-16 py-4 md:py-6 text-white bg-[#121110]/90 backdrop-blur-md border-b border-white/10 animate-fade-up">
+        <nav className="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-6 md:px-12 lg:px-16 py-4 md:py-6 text-white bg-[#121110]/50 backdrop-blur-lg border-b border-white/10 animate-fade-up">
           <div className="flex items-center gap-3 md:gap-4">
             <div className="w-8 h-8 md:w-10 md:h-10 border border-white/20 flex items-center justify-center font-serif-playfair italic text-lg md:text-xl">M</div>
             <div className="flex flex-col">
@@ -130,7 +165,6 @@ export default function StorefrontPage() {
             </div>
           </div>
           <div className="flex items-center gap-4 md:gap-8 text-[9px] md:text-[11px] uppercase tracking-[0.2em]">
-            <button onClick={() => router.push('/login')} className="hidden sm:block text-white/70 hover:text-white transition-colors">Client Sign In</button>
             <button onClick={() => scrollToSection('contact')} className="border border-gold text-gold px-4 md:px-6 py-2 md:py-2.5 hover:bg-gold hover:text-[#121110] transition-colors">Enquire</button>
           </div>
         </nav>
@@ -274,8 +308,8 @@ export default function StorefrontPage() {
               <input 
                 type="range" min="50" max="500" step="10" 
                 value={guestCount}
-                onChange={(e) => setGuestCount(Number(e.target.value))}
-                className="w-full h-1 bg-white/20 rounded-none appearance-none cursor-pointer mb-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-gold [&::-webkit-slider-thumb]:rounded-full"
+                onChange={(e) => handleGuestChange(Number(e.target.value))}
+                className="slider-custom w-full h-1.5 rounded-none appearance-none mb-4 bg-white/20"
                 style={{ background: `linear-gradient(to right, #B8905B ${((guestCount - 50) / 450) * 100}%, rgba(255,255,255,0.2) ${((guestCount - 50) / 450) * 100}%)` }}
               />
               
@@ -345,7 +379,7 @@ export default function StorefrontPage() {
                     <label className="block text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-[#121110]/60 mb-2">Estimated Guests</label>
                     <input 
                       type="number" required min="10"
-                      value={formData.guests} onChange={e => setFormData({...formData, guests: Number(e.target.value)})}
+                      value={formData.guests} onChange={e => handleGuestChange(Number(e.target.value))}
                       className="w-full bg-transparent outline-none text-lg md:text-xl font-light"
                     />
                   </div>
