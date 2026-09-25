@@ -3,7 +3,109 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Calendar, Users, MessageCircle, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { Calendar, Users, MessageCircle, ArrowRight, Loader2, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+
+// ── Custom Premium Date Picker ───────────────────────────────────────────────
+
+function CustomDatePicker({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(value ? new Date(value) : new Date());
+
+  const displayDate = value 
+    ? new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(value)) 
+    : 'Select a date';
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+
+  const days = [];
+  for (let i = 0; i < firstDayOfMonth; i++) days.push(null);
+  for (let i = 1; i <= daysInMonth; i++) days.push(i);
+
+  const handleSelectDate = (day: number) => {
+    const selected = new Date(year, month, day);
+    // Format to YYYY-MM-DD for standard form handling
+    const y = selected.getFullYear();
+    const m = String(selected.getMonth() + 1).padStart(2, '0');
+    const d = String(selected.getDate()).padStart(2, '0');
+    onChange(`${y}-${m}-${d}`);
+    setIsOpen(false);
+  };
+
+  const changeMonth = (offset: number) => {
+    setViewDate(new Date(year, month + offset, 1));
+  };
+
+  return (
+    <div className="relative w-full">
+      {/* Hidden input to maintain native HTML5 form 'required' validation */}
+      <input type="text" required value={value} readOnly className="sr-only" />
+      
+      <div 
+        onClick={() => setIsOpen(!isOpen)} 
+        className={`flex justify-between items-center w-full bg-transparent outline-none text-lg md:text-xl font-light cursor-pointer pb-1 ${value ? 'text-[#121110]' : 'text-black/20'}`}
+      >
+        <span>{displayDate}</span>
+        <Calendar className="w-5 h-5 text-[#121110]/40" />
+      </div>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-[100%] left-0 z-50 bg-white border border-black/5 p-5 shadow-2xl mt-3 w-full max-w-[320px] rounded-xl animate-fade-up">
+            
+            {/* Calendar Header */}
+            <div className="flex justify-between items-center mb-6">
+              <button type="button" onClick={() => changeMonth(-1)} className="p-2 hover:bg-black/5 rounded-full transition-colors text-[#121110]/60 hover:text-gold">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="font-serif-playfair text-lg text-[#121110]">
+                {new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(viewDate)}
+              </span>
+              <button type="button" onClick={() => changeMonth(1)} className="p-2 hover:bg-black/5 rounded-full transition-colors text-[#121110]/60 hover:text-gold">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center mb-2">
+              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                <div key={day} className="text-[9px] uppercase tracking-widest text-[#121110]/40 font-medium pb-2">
+                  {day}
+                </div>
+              ))}
+              
+              {days.map((day, idx) => {
+                if (!day) return <div key={`empty-${idx}`} className="w-8 h-8" />;
+                
+                const currentDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const isSelected = value === currentDateStr;
+
+                return (
+                  <div key={idx} className="flex justify-center items-center">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDate(day)}
+                      className={`w-8 h-8 rounded-full text-sm transition-all flex items-center justify-center font-light
+                        ${isSelected 
+                          ? 'bg-gold text-white font-medium shadow-md shadow-gold/20' 
+                          : 'text-[#121110] hover:bg-[#B8905B]/10 hover:text-gold'
+                        }`}
+                    >
+                      {day}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ── Inline SVG Decorative Elements ───────────────────────────────────────────
 
@@ -51,7 +153,7 @@ export default function StorefrontPage() {
   const [guestCount, setGuestCount] = useState<number>(150);
   const estimatedPrice = new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR', maximumFractionDigits: 0 }).format(guestCount * 225);
 
-  const [formData, setFormData] = useState({ name: '', date: '', guests: 150 });
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '', date: '', guests: 150 });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -65,17 +167,24 @@ export default function StorefrontPage() {
     e.preventDefault();
     setIsSubmitting(true);
     
-    await supabase.from('events').insert([{
-      title: formData.name || 'New Consultation',
+    // Save to the new 'inquiries' table
+    const { error } = await supabase.from('inquiries').insert([{
+      couple_name: formData.name,
+      email: formData.email,
+      phone: formData.phone,
       estimated_guests: formData.guests,
       event_date: formData.date ? new Date(formData.date).toISOString() : null,
-      status: 'lead',
-      slug: `lead-${Date.now()}`,
-      template_id: 'classic'
+      status: 'new'
     }]);
 
     setIsSubmitting(false);
-    setIsSubmitted(true);
+
+    if (error) {
+      console.error(error);
+      alert('An error occurred. Please try again.');
+    } else {
+      setIsSubmitted(true);
+    }
   };
 
   const scrollToSection = (id: string) => {
@@ -365,13 +474,32 @@ export default function StorefrontPage() {
                       className="w-full bg-transparent outline-none text-lg md:text-xl font-light placeholder:text-black/20"
                     />
                   </div>
-                  
+
                   <div className="border-b border-black/10 pb-2">
-                    <label className="block text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-[#121110]/60 mb-2">Celebration Date</label>
+                    <label className="block text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-[#121110]/60 mb-2">Email Address</label>
                     <input 
-                      type="date" required
-                      value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})}
-                      className="w-full bg-transparent outline-none text-lg md:text-xl font-light text-[#121110]"
+                      type="email" required
+                      value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})}
+                      placeholder="hello@example.com"
+                      className="w-full bg-transparent outline-none text-lg md:text-xl font-light placeholder:text-black/20"
+                    />
+                  </div>
+
+                  <div className="border-b border-black/10 pb-2">
+                    <label className="block text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-[#121110]/60 mb-2">Phone Number</label>
+                    <input 
+                      type="tel" required
+                      value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})}
+                      placeholder="e.g. 077 123 4567"
+                      className="w-full bg-transparent outline-none text-lg md:text-xl font-light placeholder:text-black/20"
+                    />
+                  </div>
+                  
+                  <div className="border-b border-black/10 pb-2 relative">
+                    <label className="block text-[9px] md:text-[10px] uppercase tracking-[0.2em] text-[#121110]/60 mb-2">Celebration Date</label>
+                    <CustomDatePicker 
+                      value={formData.date} 
+                      onChange={(val) => setFormData({ ...formData, date: val })} 
                     />
                   </div>
 
@@ -408,7 +536,7 @@ export default function StorefrontPage() {
           
           <p className="text-[9px] md:text-[10px] text-[#121110]/50 max-w-[200px] md:max-w-none">Designed for distinction in Colombo, Sri Lanka.</p>
           
-          <p className="text-[9px] md:text-[10px] text-[#121110]/80 tracking-widest">hello@studioclicked.lk</p>
+          <p className="text-[9px] md:text-[10px] text-[#121110]/80 tracking-widest">moments.studioclicked.lk</p>
         </footer>
 
       </div>
