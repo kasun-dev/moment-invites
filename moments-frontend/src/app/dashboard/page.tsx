@@ -43,9 +43,11 @@ export default function DashboardPage() {
 
   const fetchEvents = async () => {
     setLoading(true);
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) { router.push('/login'); return; }
-    setUser(user);
+    
+    // ── FIX: Use getSession() instead of getUser() to prevent Web Lock collisions ──
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    if (authError || !session?.user) { router.push('/login'); return; }
+    setUser(session.user);
 
     const from = (currentPage - 1) * pageSize;
     const to = from + pageSize - 1;
@@ -53,7 +55,7 @@ export default function DashboardPage() {
     const { data, error, count } = await supabase
       .from('events')
       .select(`*, guests (id, rsvp_status, is_attending, sub_guests ( id, is_attending ))`, { count: 'exact' })
-      .eq('owner_id', user.id)
+      .eq('owner_id', session.user.id)
       .order('created_at', { ascending: false })
       .range(from, to);
 

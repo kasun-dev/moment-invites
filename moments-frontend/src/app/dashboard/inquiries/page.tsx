@@ -32,8 +32,11 @@ export default function InquiriesPage() {
 
   const fetchInquiries = async () => {
     setLoading(true);
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) { router.push('/login'); return; }
+    
+    // Use getSession() instead of getUser() to prevent Web Lock collisions 
+    // when the Dashboard Layout and Page mount simultaneously.
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    if (authError || !session) { router.push('/login'); return; }
 
     const { data, error } = await supabase
       .from('inquiries')

@@ -11,7 +11,8 @@ import {
   Menu, 
   X, 
   UserCircle,
-  Users
+  Users,
+  Palette
 } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -36,6 +37,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navItems = [
     { name: 'Events Workspace', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Web Inquiries', href: '/dashboard/inquiries', icon: MessageSquare },
+    { name: 'Design Collection', href: '/dashboard/templates', icon: Palette },
     { name: 'Staff Management', href: '/dashboard/staff', icon: Users },
     { name: 'Settings', href: '/dashboard/settings', icon: Settings },
   ];
