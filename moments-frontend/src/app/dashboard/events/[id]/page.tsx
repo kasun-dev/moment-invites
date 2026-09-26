@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
-  ArrowLeft, Calendar, MapPin, Plus, CheckCircle2, XCircle, Clock, Trash2, 
+  ArrowLeft, Calendar, MapPin, Plus, CheckCircle2, Clock, Trash2, 
   Users, Check, UserPlus, LayoutGrid, Table as TableIcon, ChevronLeft, ChevronRight, 
-  Loader2, Copy, MessageSquare, Send, X, CheckCheck 
+  Loader2, Copy, MessageSquare, Send, X, CheckCheck, Utensils, PieChart
 } from 'lucide-react';
 import BulkImport from '@/components/BulkImport';
 
@@ -16,14 +16,15 @@ export default function EventDetailsPage() {
   const eventId = params.id as string;
 
   const [event, setEvent] = useState<any>(null);
+  const [allGuests, setAllGuests] = useState<any[]>([]); // Full unpaginated list for accurate summary stats
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fetchingGuests, setFetchingGuests] = useState(false);
   
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedGuestIds, setSelectedGuestIds] = useState<string[]>([]);
   
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isSummaryDrawerOpen, setIsSummaryDrawerOpen] = useState(false);
   const [bulkIndex, setBulkIndex] = useState(0);
   
   const [currentPage, setCurrentPage] = useState(1);
@@ -36,6 +37,7 @@ export default function EventDetailsPage() {
   
   const [newGuestName, setNewGuestName] = useState('');
   const [newGuestPhone, setNewGuestPhone] = useState('');
+  const [invitedEvents, setInvitedEvents] = useState<string[]>([]);
   const [addingGuest, setAddingGuest] = useState(false);
 
   useEffect(() => {
@@ -43,14 +45,19 @@ export default function EventDetailsPage() {
       const { data, error } = await supabase.from('events').select('*').eq('id', eventId).single();
       if (error || !data) { router.push('/dashboard'); return; }
       setEvent(data);
+      if (data.itinerary) {
+        setInvitedEvents(data.itinerary.map((i: any) => i.id));
+      }
     };
     fetchEvent();
   }, [eventId, router]);
 
-  useEffect(() => { fetchPaginatedGuests(); }, [eventId, currentPage, pageSize]);
+  useEffect(() => { 
+    fetchPaginatedGuests();
+    fetchAllGuestsForSummary(); // Grab the full list separately for accurate math
+  }, [eventId, currentPage, pageSize]);
 
   const fetchPaginatedGuests = async () => {
-    setFetchingGuests(true);
     const from = (currentPage - 1) * pageSize;
     const to = from + pageSize - 1;
     const { data, error, count } = await supabase
@@ -63,7 +70,15 @@ export default function EventDetailsPage() {
     if (data) setGuests(data);
     if (count !== null) setTotalCount(count);
     setLoading(false);
-    setFetchingGuests(false);
+  };
+
+  // Needed to calculate summary statistics across ALL pages, not just the current page
+  const fetchAllGuestsForSummary = async () => {
+    const { data } = await supabase
+      .from('guests')
+      .select(`*, sub_guests (*)`)
+      .eq('event_id', eventId);
+    if (data) setAllGuests(data);
   };
 
   const formatPhone = (phone: string) => {
@@ -79,12 +94,12 @@ export default function EventDetailsPage() {
 
   const getWhatsAppUrl = (guest: any) => {
     const baseUrl = window.location.origin;
-    const message = `Hello ${guest.first_name}!  \n\nWe are excited to invite you to *${event.title}*.\n\nPlease view your invitation and RSVP here:\n${baseUrl}/v/${event.slug}?guest=${guest.access_token}`;
+    const message = `Hello ${guest.first_name}!  \n\nWe are excited to invite you to *${event?.title}*.\n\nPlease view your invitation and RSVP here:\n${baseUrl}/v/${event?.slug}?guest=${guest.access_token}`;
     return `https://wa.me/${formatPhone(guest.phone)}?text=${encodeURIComponent(message)}`;
   };
 
   const handleManualCopy = (guest: any) => {
-    const url = `${window.location.origin}/v/${event.slug}?guest=${guest.access_token}`;
+    const url = `${window.location.origin}/v/${event?.slug}?guest=${guest.access_token}`;
     navigator.clipboard.writeText(url);
     setCopiedId(guest.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -104,13 +119,30 @@ export default function EventDetailsPage() {
     setSelectedGuestIds(selectedGuestIds.length === guests.length ? [] : guests.map(g => g.id));
   };
 
+  const toggleInviteEvent = (id: string) => {
+    setInvitedEvents(prev => prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]);
+  };
+
   const handleAddPrimaryGuest = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddingGuest(true);
+
     const { error } = await supabase.from('guests').insert([{
-      event_id: eventId, first_name: newGuestName, phone: newGuestPhone, is_attending: false, invitation_sent: false
+      event_id: eventId, 
+      first_name: newGuestName, 
+      phone: newGuestPhone, 
+      is_attending: false, 
+      invitation_sent: false,
+      invited_events: invitedEvents,
+      dietary_preference: 'Standard',
+      attending_events: []
     }]);
-    if (!error) { fetchPaginatedGuests(); setNewGuestName(''); setNewGuestPhone(''); }
+    if (!error) { 
+      fetchPaginatedGuests(); 
+      fetchAllGuestsForSummary();
+      setNewGuestName(''); 
+      setNewGuestPhone(''); 
+    }
     setAddingGuest(false);
   };
 
@@ -118,10 +150,11 @@ export default function EventDetailsPage() {
     e.preventDefault();
     if (!subGuestName.trim()) return;
     const { data } = await supabase.from('sub_guests').insert([{
-      parent_guest_id: parentId, full_name: subGuestName, is_attending: false
+      parent_guest_id: parentId, full_name: subGuestName, is_attending: false, dietary_preference: 'Standard', attending_events: []
     }]).select();
     if (data) {
       setGuests(guests.map(g => g.id === parentId ? { ...g, sub_guests: [...(g.sub_guests || []), data[0]] } : g));
+      fetchAllGuestsForSummary();
       setSubGuestName(''); setActiveGuestId(null);
     }
   };
@@ -130,12 +163,68 @@ export default function EventDetailsPage() {
     if (confirm("Permanently delete guest?")) {
       await supabase.from('guests').delete().eq('id', guestId);
       fetchPaginatedGuests();
+      fetchAllGuestsForSummary();
     }
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  if (loading) return (
+  // ── Calculate Summary Metrics ──
+  const getSummaryStats = () => {
+    const summary = {
+      totalGuests: 0,
+      totalConfirmed: 0,
+      events: {} as Record<string, { invited: number, confirmed: number }>,
+      dietary: { Standard: 0, Vegetarian: 0, Vegan: 0, Halal: 0, Allergies: 0 } as Record<string, number>
+    };
+
+    // Initialize Event Counters
+    event?.itinerary?.forEach((item: any) => {
+      summary.events[item.id] = { invited: 0, confirmed: 0 };
+    });
+
+    allGuests.forEach(guest => {
+      summary.totalGuests += 1;
+      
+      // Count primary guest event invitations and confirmations
+      guest.invited_events?.forEach((evId: string) => {
+        if (summary.events[evId]) summary.events[evId].invited += 1;
+      });
+      if (guest.is_attending) {
+        summary.totalConfirmed += 1;
+        guest.attending_events?.forEach((evId: string) => {
+          if (summary.events[evId]) summary.events[evId].confirmed += 1;
+        });
+        if (event?.ask_dietary && guest.dietary_preference) {
+          summary.dietary[guest.dietary_preference] = (summary.dietary[guest.dietary_preference] || 0) + 1;
+        }
+      }
+
+      // Count sub-guests
+      guest.sub_guests?.forEach((sub: any) => {
+        summary.totalGuests += 1;
+        // Sub-guests implicitly have the same invites as their parent
+        guest.invited_events?.forEach((evId: string) => {
+          if (summary.events[evId]) summary.events[evId].invited += 1;
+        });
+        if (sub.is_attending) {
+          summary.totalConfirmed += 1;
+          sub.attending_events?.forEach((evId: string) => {
+            if (summary.events[evId]) summary.events[evId].confirmed += 1;
+          });
+          if (event?.ask_dietary && sub.dietary_preference) {
+            summary.dietary[sub.dietary_preference] = (summary.dietary[sub.dietary_preference] || 0) + 1;
+          }
+        }
+      });
+    });
+
+    return summary;
+  };
+
+  const stats = getSummaryStats();
+
+  if (loading || !event) return (
     <div className="flex flex-col items-center justify-center py-32 opacity-50">
       <div className="w-8 h-8 border-2 border-zinc-800 border-t-[#B8905B] rounded-full animate-spin mb-6"></div>
       <p className="text-[#B8905B] text-[10px] font-black tracking-[0.3em] uppercase">Loading Roster</p>
@@ -143,8 +232,18 @@ export default function EventDetailsPage() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto text-zinc-300">
+    <div className="max-w-6xl mx-auto text-zinc-300 relative">
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        .animate-slide-in-right {
+          animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+      `}</style>
       
+      {/* ── Batch Dispatch Modal ── */}
       {isBulkModalOpen && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-[#0a0a0a] border border-zinc-800 rounded-3xl max-w-md w-full p-10 shadow-2xl relative">
@@ -175,6 +274,78 @@ export default function EventDetailsPage() {
         </div>
       )}
 
+      {/* ── Slide-Over Summary Drawer ── */}
+      {isSummaryDrawerOpen && (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsSummaryDrawerOpen(false)} />
+          <div className="relative w-full max-w-md h-full bg-[#0a0a0a] border-l border-zinc-800 flex flex-col shadow-2xl animate-slide-in-right overflow-y-auto">
+            
+            <div className="flex items-center justify-between p-8 border-b border-zinc-800/60 bg-zinc-950/50">
+               <div>
+                 <h2 className="text-2xl font-serif text-white tracking-tight">Event Summary</h2>
+                 <p className="text-[10px] text-[#B8905B] uppercase tracking-widest mt-1 font-bold">Real-time Analytics</p>
+               </div>
+               <button onClick={() => setIsSummaryDrawerOpen(false)} className="p-2 bg-zinc-900 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-white transition-colors">
+                 <X className="w-5 h-5"/>
+               </button>
+            </div>
+            
+            <div className="p-8 space-y-8">
+              {/* Grand Totals */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl text-center">
+                  <p className="text-4xl font-light text-white mb-1">{stats.totalGuests}</p>
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">Expected Guests</p>
+                </div>
+                <div className="bg-green-950/20 border border-green-900/30 p-6 rounded-2xl text-center">
+                  <p className="text-4xl font-light text-green-400 mb-1">{stats.totalConfirmed}</p>
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-green-500/80">Total Confirmed</p>
+                </div>
+              </div>
+
+              {/* Sub-Event Breakdown */}
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 mb-4 border-b border-zinc-800 pb-2">Sub-Event Breakdown</h3>
+                <div className="space-y-4">
+                  {event.itinerary?.map((item: any) => {
+                    const eventStats = stats.events[item.id] || { invited: 0, confirmed: 0 };
+                    const progress = eventStats.invited > 0 ? (eventStats.confirmed / eventStats.invited) * 100 : 0;
+                    
+                    return (
+                      <div key={item.id} className="bg-black/40 border border-zinc-800/50 p-4 rounded-xl">
+                        <div className="flex justify-between items-center mb-2">
+                          <p className="text-sm font-bold text-white">{item.name}</p>
+                          <span className="text-[10px] font-black text-[#B8905B] uppercase">{eventStats.confirmed} / {eventStats.invited} Confirmed</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                          <div className="h-full bg-[#B8905B] rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Dietary Requirements */}
+              {event.ask_dietary && (
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 mb-4 border-b border-zinc-800 pb-2 flex items-center gap-2"><Utensils className="w-3.5 h-3.5"/> Dietary Requirements</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {Object.entries(stats.dietary).map(([diet, count]) => (
+                      <div key={diet} className="bg-black/40 border border-zinc-800/50 px-4 py-3 rounded-xl flex justify-between items-center">
+                        <span className="text-xs text-zinc-300">{diet}</span>
+                        <span className={`text-sm font-bold ${diet !== 'Standard' && count > 0 ? 'text-orange-400' : 'text-zinc-500'}`}>{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* Professional Breadcrumb & Header */}
       <div className="mb-10">
         <button onClick={() => router.push('/dashboard')} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 hover:text-[#B8905B] mb-6 transition-colors">
@@ -184,16 +355,22 @@ export default function EventDetailsPage() {
           <div>
             <h1 className="text-4xl font-serif text-white tracking-tight mb-3">{event?.title}</h1>
             <div className="flex flex-wrap items-center gap-6 text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em]">
-              <span className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5" /> {new Date(event?.event_date).toLocaleDateString()}</span>
-              <span className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {event?.location}</span>
+              <span className="flex items-center gap-2 text-[#B8905B]"><CheckCircle2 className="w-3.5 h-3.5" /> {event?.itinerary?.length || 0} Sub-Events Scheduled</span>
+              {!event?.ask_dietary && <span className="flex items-center gap-2 text-orange-400"><Utensils className="w-3.5 h-3.5" /> Dietary Requests Disabled</span>}
             </div>
           </div>
-          <BulkImport eventId={eventId} onSuccess={fetchPaginatedGuests} />
+          
+          <div className="flex items-center gap-3">
+            <button onClick={() => setIsSummaryDrawerOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-300 hover:text-white hover:border-zinc-600 transition-all shadow-sm">
+              <PieChart className="w-3.5 h-3.5" /> Summary
+            </button>
+            <BulkImport eventId={eventId} onSuccess={() => { fetchPaginatedGuests(); fetchAllGuestsForSummary(); }} />
+          </div>
         </div>
       </div>
 
       {/* Guest Registration Bar */}
-      <div className="bg-zinc-900/30 border border-zinc-800/80 p-6 rounded-2xl mb-10 flex flex-col md:flex-row gap-6 items-end">
+      <div className="bg-zinc-900/30 border border-zinc-800/80 p-6 rounded-2xl mb-10 flex flex-col md:flex-row gap-6 items-start md:items-end shadow-lg">
         <div className="flex-1 w-full">
           <label className="block text-[9px] text-zinc-500 mb-2 uppercase font-black tracking-widest">Primary Guest Name</label>
           <input type="text" required value={newGuestName} onChange={e => setNewGuestName(e.target.value)} placeholder="e.g. Mr. & Mrs. Perera" className="w-full px-4 py-3 bg-black border border-zinc-800 rounded-xl text-white outline-none focus:border-[#B8905B] transition-all text-sm" />
@@ -202,7 +379,18 @@ export default function EventDetailsPage() {
           <label className="block text-[9px] text-zinc-500 mb-2 uppercase font-black tracking-widest">WhatsApp Number</label>
           <input type="text" value={newGuestPhone} onChange={e => setNewGuestPhone(e.target.value)} placeholder="077 123 4567" className="w-full px-4 py-3 bg-black border border-zinc-800 rounded-xl text-white outline-none focus:border-[#B8905B] transition-all text-sm font-mono" />
         </div>
-        <button onClick={handleAddPrimaryGuest} disabled={addingGuest} className="px-8 py-3 bg-[#B8905B] text-[#121110] font-black rounded-xl h-[46px] uppercase text-[10px] tracking-widest hover:bg-white transition-all shadow-lg shrink-0 flex items-center gap-2">
+        <div className="flex flex-col gap-2 w-full md:w-auto">
+          <label className="block text-[9px] text-zinc-500 uppercase font-black tracking-widest">Event Access</label>
+          <div className="flex flex-wrap items-center gap-4 py-2">
+             {event?.itinerary?.map((item: any) => (
+               <label key={item.id} className="flex items-center gap-2 text-xs text-white cursor-pointer hover:text-[#B8905B] transition-colors">
+                 <input type="checkbox" checked={invitedEvents.includes(item.id)} onChange={() => toggleInviteEvent(item.id)} className="accent-[#B8905B] w-3.5 h-3.5" /> 
+                 {item.name}
+               </label>
+             ))}
+          </div>
+        </div>
+        <button onClick={handleAddPrimaryGuest} disabled={addingGuest || newGuestName === '' || invitedEvents.length === 0} className="px-8 py-3 bg-[#B8905B] text-[#121110] font-black rounded-xl h-[46px] uppercase text-[10px] tracking-widest hover:bg-white transition-all shadow-lg shrink-0 flex items-center gap-2 disabled:opacity-50">
           <UserPlus className="w-4 h-4" /> Add Guest
         </button>
       </div>
@@ -255,7 +443,20 @@ export default function EventDetailsPage() {
                     <div className="font-serif text-white flex items-center gap-2 text-xl tracking-tight">
                       {guest.first_name} {guest.is_attending && <Check className="w-4 h-4 text-green-500 stroke-[3px]" />}
                     </div>
+                    {event?.ask_dietary && guest.dietary_preference && guest.dietary_preference !== 'Standard' && guest.is_attending && (
+                      <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[8px] bg-orange-950/40 text-orange-400 border border-orange-900/50 uppercase tracking-widest font-black"><Utensils className="w-2 h-2"/> {guest.dietary_preference}</span>
+                    )}
                     <div className="text-[#B8905B] text-xs font-mono mt-1 tracking-wider">{guest.phone || 'N/A'}</div>
+                    <div className="mt-2 text-[8px] flex gap-1 uppercase tracking-widest text-zinc-600 flex-wrap max-w-[200px]">
+                      {guest.invited_events?.map((evId: string) => {
+                         const match = event?.itinerary?.find((i:any) => i.id === evId);
+                         const isAttending = guest.is_attending && guest.attending_events?.includes(evId);
+                         if (!match) return null;
+                         return isAttending 
+                           ? <span key={`att-${evId}`} className="bg-green-950/40 border border-green-900/50 text-green-400 px-1.5 py-0.5 rounded mb-1 flex items-center gap-1"><Check className="w-2 h-2"/>{match.name}</span>
+                           : <span key={`inv-${evId}`} className="bg-zinc-900 border border-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded mb-1">{match.name}</span>;
+                      })}
+                    </div>
                     <button onClick={() => handleManualCopy(guest)} className={`mt-4 flex items-center gap-2 px-3 py-1.5 rounded-md text-[8px] font-black uppercase tracking-widest transition-all border ${copiedId === guest.id ? 'bg-green-950/40 border-green-800 text-green-400' : 'bg-black border-zinc-800 text-zinc-500 hover:text-white hover:border-zinc-600'}`}>
                       {copiedId === guest.id ? <CheckCheck className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />} {copiedId === guest.id ? 'URL Copied' : 'Copy Link'}
                     </button>
@@ -263,9 +464,20 @@ export default function EventDetailsPage() {
                   <td className="px-4 py-6 align-top">
                     <div className="space-y-2">
                       {guest.sub_guests?.map((sub: any) => (
-                        <div key={sub.id} className="flex items-center gap-3 bg-black/40 border border-zinc-800/50 px-3 py-2 rounded-lg w-64 shadow-inner">
-                          <Check className={`w-3.5 h-3.5 ${sub.is_attending ? 'text-green-500' : 'text-zinc-800'}`} /> 
-                          <span className="text-xs font-medium text-zinc-400 truncate">{sub.full_name}</span>
+                        <div key={sub.id} className="flex flex-col bg-black/40 border border-zinc-800/50 px-3 py-2 rounded-lg w-64 shadow-inner">
+                          <div className="flex items-center gap-3">
+                            <Check className={`w-3.5 h-3.5 ${sub.is_attending ? 'text-green-500' : 'text-zinc-800'}`} /> 
+                            <span className="text-xs font-medium text-zinc-400 truncate">{sub.full_name}</span>
+                          </div>
+                          {event?.ask_dietary && sub.dietary_preference && sub.dietary_preference !== 'Standard' && sub.is_attending && (
+                            <span className="ml-6 mt-1 text-[8px] text-orange-400 font-bold uppercase tracking-widest">{sub.dietary_preference}</span>
+                          )}
+                          <div className="ml-6 mt-1.5 text-[8px] flex gap-1 uppercase tracking-widest flex-wrap">
+                            {sub.attending_events?.map((evId: string) => {
+                               const match = event?.itinerary?.find((i:any) => i.id === evId);
+                               return sub.is_attending && match ? <span key={`sub-att-${evId}`} className="text-green-500">• {match.name}</span> : null;
+                            })}
+                          </div>
                         </div>
                       ))}
                       {activeGuestId === guest.id ? (
@@ -290,7 +502,7 @@ export default function EventDetailsPage() {
                   <td className="px-6 py-6 align-top text-right">
                     <div className="flex justify-end gap-2">
                       <button onClick={() => triggerWhatsApp(guest)} className={`p-2.5 rounded-lg border transition-all ${guest.invitation_sent ? 'bg-black text-zinc-600 border-zinc-800 hover:border-[#B8905B] hover:text-[#B8905B]' : 'bg-green-900/20 text-green-500 border-green-900/30 hover:bg-green-900/40'}`}><MessageSquare className="w-4 h-4" /></button>
-                      <button onClick={() => handleDeleteGuest(guest.id)} className="p-2.5 bg-black border border-zinc-800 text-zinc-600 hover:text-red-500 hover:border-red-900/30 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteGuest(guest.id)} className="p-2.5 bg-black border border-zinc-800 text-zinc-600 hover:text-red-500 transition-all rounded-lg hover:border-red-900/50"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -308,7 +520,20 @@ export default function EventDetailsPage() {
                 <h3 className="text-2xl font-serif tracking-tight flex items-center gap-2">
                   {guest.first_name} {guest.is_attending && <Check className="w-5 h-5 text-green-500 stroke-[3px]" />}
                 </h3>
+                {event?.ask_dietary && guest.dietary_preference && guest.dietary_preference !== 'Standard' && guest.is_attending && (
+                  <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[8px] bg-orange-950/40 text-orange-400 border border-orange-900/50 uppercase tracking-widest font-black"><Utensils className="w-2 h-2"/> {guest.dietary_preference}</span>
+                )}
                 <p className="text-[#B8905B] text-xs font-mono tracking-widest mt-2">{guest.phone || 'N/A'}</p>
+                <div className="mt-3 text-[8px] flex gap-1 uppercase tracking-widest flex-wrap">
+                  {guest.invited_events?.map((evId: string) => {
+                      const match = event?.itinerary?.find((i:any) => i.id === evId);
+                      const isAttending = guest.is_attending && guest.attending_events?.includes(evId);
+                      if (!match) return null;
+                      return isAttending 
+                        ? <span key={`att-${evId}`} className="bg-green-950/40 border border-green-900/50 text-green-400 px-1.5 py-0.5 rounded mb-1 flex items-center gap-1"><Check className="w-2 h-2"/>{match.name}</span>
+                        : <span key={`inv-${evId}`} className="bg-zinc-950 border border-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded mb-1">{match.name}</span>;
+                  })}
+                </div>
               </div>
               
               <div className="flex-1 space-y-5 mb-6">
@@ -319,8 +544,19 @@ export default function EventDetailsPage() {
                 
                 <div className="space-y-2">
                   {guest.sub_guests?.map((sub: any) => (
-                    <div key={sub.id} className="text-xs text-zinc-400 flex items-center gap-3 bg-black/40 px-3 py-2 rounded-lg border border-zinc-800/50">
-                      <Check className={`w-3.5 h-3.5 ${sub.is_attending ? 'text-green-500' : 'text-zinc-800'}`} /> {sub.full_name}
+                    <div key={sub.id} className="text-xs text-zinc-400 flex flex-col bg-black/40 px-3 py-2 rounded-lg border border-zinc-800/50">
+                      <div className="flex items-center gap-3">
+                        <Check className={`w-3.5 h-3.5 ${sub.is_attending ? 'text-green-500' : 'text-zinc-800'}`} /> {sub.full_name}
+                      </div>
+                      {event?.ask_dietary && sub.dietary_preference && sub.dietary_preference !== 'Standard' && sub.is_attending && (
+                         <span className="ml-6 mt-1 text-[8px] text-orange-400 font-bold uppercase tracking-widest">{sub.dietary_preference}</span>
+                      )}
+                      <div className="ml-6 mt-1.5 text-[8px] flex gap-1 uppercase tracking-widest flex-wrap">
+                        {sub.attending_events?.map((evId: string) => {
+                            const match = event?.itinerary?.find((i:any) => i.id === evId);
+                            return sub.is_attending && match ? <span key={`sub-att-${evId}`} className="text-green-500">• {match.name}</span> : null;
+                        })}
+                      </div>
                     </div>
                   ))}
                   {activeGuestId === guest.id ? (
