@@ -360,12 +360,22 @@ export default function EventDetailsPage() {
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
-            <button onClick={() => setIsSummaryDrawerOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-300 hover:text-white hover:border-zinc-600 transition-all shadow-sm">
-              <PieChart className="w-3.5 h-3.5" /> Summary
-            </button>
-            <BulkImport eventId={eventId} onSuccess={() => { fetchPaginatedGuests(); fetchAllGuestsForSummary(); }} />
-          </div>
+          <div className="flex flex-wrap items-center gap-3">
+  <button 
+    onClick={() => {
+      navigator.clipboard.writeText(`${window.location.origin}/portal/${event?.client_token}`);
+      alert("Client Portal Link Copied to Clipboard!");
+    }} 
+    className="flex items-center gap-2 px-5 py-2.5 bg-[#B8905B]/10 border border-[#B8905B]/30 rounded-xl text-[10px] font-black uppercase tracking-widest text-[#B8905B] hover:bg-[#B8905B] hover:text-[#121110] transition-all shadow-sm"
+  >
+    <Copy className="w-3.5 h-3.5" /> Copy Client Portal Link
+  </button>
+
+  <button onClick={() => setIsSummaryDrawerOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-300 hover:text-white hover:border-zinc-600 transition-all shadow-sm">
+    <PieChart className="w-3.5 h-3.5" /> Summary
+  </button>
+  <BulkImport eventId={eventId} onSuccess={() => { fetchPaginatedGuests(); fetchAllGuestsForSummary(); }} />
+</div>
         </div>
       </div>
 
